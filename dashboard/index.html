@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Roles & ROI Explorer · Scale Army</title>
+
+  <!-- A/B: inject variant CSS before paint — zero flash, auto 50/50 -->
+  <script>
+    (function () {
+      var ab = JSON.parse(localStorage.getItem('sa_ab') || '{}');
+      if (!ab.headline) ab.headline = Math.random() < 0.5 ? 'a' : 'b';
+      if (!ab.stat)     ab.stat     = Math.random() < 0.5 ? 'a' : 'b';
+      localStorage.setItem('sa_ab', JSON.stringify(ab));
+      var s = document.createElement('style');
+      s.id = 'ab-variants';
+      s.textContent =
+        (ab.headline === 'a' ? '.v-headline-b' : '.v-headline-a') + '{display:none!important}' +
+        (ab.headline === 'a' ? '.v-img-b'      : '.v-img-a')      + '{display:none!important}' +
+        (ab.stat     === 'a' ? '.v-stat-b'     : '.v-stat-a')     + '{display:none!important}';
+      document.head.appendChild(s);
+    })();
+  </script>
+
+  <!-- Supabase JS client (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <link rel="stylesheet" href="tokens.css" />
+  <style>
+
+    /* ── Pages ─────────────────────────────────────── */
+    .page { display: none; }
+    .page.active {
+      display: block;
+      animation: fadeUp 0.4s ease both;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ══════════════════════════════════════════════════
+       PAGE 1 — Split hero
+    ══════════════════════════════════════════════════ */
+    .hero-split {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Left: image */
+    .hero-split__image {
+      position: relative;
+      width: 50%;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .hero-split__image img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center top;
+    }
+    /* Fade image into navy on the right edge */
+    .hero-split__image::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to right, transparent 55%, #162b3e 100%);
+    }
+
+    /* Right: content */
+    .hero-split__content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 56px 52px 56px 44px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Brand mark */
+    .brand-mark {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 36px;
+    }
+    .brand-mark__dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      box-shadow: 0 0 10px rgba(249,115,22,0.6);
+    }
+    .brand-mark__name {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-text-secondary);
+    }
+
+    /* Headline */
+    .hero-split__content h1 {
+      font-size: 52px;
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -1px;
+      margin-bottom: 14px;
+      color: var(--color-text-primary);
+    }
+    .hero-split__content h1 span { color: var(--color-accent-light); }
+
+    .hero-split__content .hero-sub {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+      margin-bottom: 36px;
+      max-width: 380px;
+    }
+
+    /* Area selector */
+    .area-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .area-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 36px;
+    }
+
+    .area-pill {
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 18px;
+      border-radius: var(--border-radius-pill);
+      border: 1px solid var(--glass-border);
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+      user-select: none;
+    }
+    .area-pill:hover {
+      background: var(--glass-bg-hover);
+      border-color: var(--glass-border-hover);
+      color: var(--color-text-primary);
+    }
+    .area-pill.active {
+      background: var(--color-accent);
+      border-color: var(--color-accent);
+      color: #fff;
+      box-shadow: 0 0 16px rgba(249,115,22,0.4);
+    }
+
+    /* CTA */
+    .hero-cta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .hero-cta__btn {
+      padding: 13px 32px;
+      border-radius: var(--border-radius-sm);
+      background: var(--color-accent);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+      box-shadow: 0 0 20px rgba(249,115,22,0.4);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .hero-cta__btn:hover {
+      background: var(--color-accent-light);
+      box-shadow: 0 0 28px rgba(249,115,22,0.6);
+    }
+    .hero-cta__btn svg { transition: transform 0.2s; }
+    .hero-cta__btn:hover svg { transform: translateX(4px); }
+    .hero-cta__note {
+      font-size: 11px;
+      color: var(--color-text-muted);
+    }
+
+    /* ══════════════════════════════════════════════════
+       PAGE 2 — Dashboard
+    ══════════════════════════════════════════════════ */
+    .back-bar {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 20px 0;
+    }
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      padding: 0;
+      transition: color 0.15s;
+    }
+    .back-btn:hover { color: var(--color-text-primary); }
+
+    .dashboard {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 20px 80px;
+    }
+
+    .dashboard-header { margin-bottom: 24px; }
+    .dashboard-header h2 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.6px;
+      margin-bottom: 6px;
+    }
+    .dashboard-header p { font-size: 13px; color: var(--color-text-secondary); }
+
+    /* Hero stats */
+    .hero-stats { display: flex; gap: 32px; margin-bottom: 20px; align-items: flex-start; }
+    .stat-card  { flex: 1; }
+    .stat-card__label {
+      display: block; font-size: 11px; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--color-text-secondary); margin-bottom: 5px;
+    }
+    .stat-card__value { font-size: 36px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; }
+    .stat-card__value--accent { color: var(--color-accent-light); }
+
+    /* Filter pills */
+    .filter-row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+    .filter-pill {
+      font-size: 12px; font-weight: 500; padding: 6px 14px;
+      border-radius: var(--border-radius-pill);
+      border: 1px solid var(--glass-border);
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+      color: var(--color-text-secondary); cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      user-select: none;
+    }
+    .filter-pill:hover { background: var(--glass-bg-hover); border-color: var(--glass-border-hover); color: var(--color-text-primary); }
+    .filter-pill.active { background: var(--color-accent); border-color: var(--color-accent); color: #fff; box-shadow: 0 0 14px rgba(249,115,22,0.4); }
+
+    /* Role grid */
+    .role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .role-card {
+      border-radius: var(--border-radius-lg); padding: 14px 16px; cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+    }
+    .role-card:hover { background: var(--glass-bg-hover); border-color: var(--glass-border-hover); transform: translateY(-2px); }
+    .role-card.selected { border-color: var(--color-accent); background: var(--glass-bg-active); box-shadow: 0 0 0 1px var(--color-accent), var(--glass-shadow); }
+    .role-card[hidden] { display: none; }
+
+    .role-card__badge {
+      display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+      text-transform: uppercase; padding: 3px 9px;
+      border-radius: var(--border-radius-pill); margin-bottom: 10px;
+    }
+    .badge--design    { background: var(--cat-design-bg);    border: 1px solid var(--cat-design-border);    color: var(--cat-design-text); }
+    .badge--marketing { background: var(--cat-marketing-bg); border: 1px solid var(--cat-marketing-border); color: var(--cat-marketing-text); }
+    .badge--social    { background: var(--cat-social-bg);    border: 1px solid var(--cat-social-border);    color: var(--cat-social-text); }
+    .badge--paid      { background: var(--cat-paid-bg);      border: 1px solid var(--cat-paid-border);      color: var(--cat-paid-text); }
+    .badge--sales     { background: var(--cat-sales-bg);     border: 1px solid var(--cat-sales-border);     color: var(--cat-sales-text); }
+    .badge--ops       { background: var(--cat-ops-bg);       border: 1px solid var(--cat-ops-border);       color: var(--cat-ops-text); }
+
+    .role-card__name  { font-size: 14px; font-weight: 600; margin-bottom: 5px; line-height: 1.3; }
+    .role-card__stat  { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 8px; }
+    .role-card__stat strong { color: var(--color-accent-light); font-weight: 600; }
+    .role-card__desc  { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; }
+
+    /* ── Lead form section ─────────────────────────── */
+    .lead-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-radius: var(--border-radius-lg);
+      margin-top: 24px;
+      overflow: hidden;
+    }
+
+    /* Left: form */
+    .lead-form-side {
+      padding: 32px 36px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border);
+      border-right: none;
+      border-radius: var(--border-radius-lg) 0 0 var(--border-radius-lg);
+    }
+
+    .form-context {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+    }
+    .form-context__label {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+    .form-context__badge {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: var(--border-radius-pill);
+    }
+    /* default (all roles) badge */
+    .form-context__badge.badge--all {
+      background: var(--glass-bg-hover);
+      border: 1px solid var(--glass-border-hover);
+      color: var(--color-text-primary);
+    }
+
+    /* Role row — hidden until a card is clicked */
+    .form-role-row {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .form-role-row.visible { display: flex; }
+    .form-role-clear {
+      font-size: 12px; line-height: 1;
+      background: none; border: none;
+      color: var(--color-text-muted);
+      cursor: pointer; padding: 0 2px;
+      transition: color 0.15s;
+    }
+    .form-role-clear:hover { color: var(--color-text-primary); }
+
+    .form-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .form-subtitle {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .form-fields { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
+
+    .form-field { display: flex; flex-direction: column; gap: 5px; }
+    .form-field label {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-text-secondary);
+    }
+    .form-field input {
+      padding: 10px 14px;
+      border-radius: var(--border-radius-sm);
+      border: 1px solid var(--glass-border);
+      background: rgba(255,255,255,0.05);
+      color: var(--color-text-primary);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .form-field input::placeholder { color: var(--color-text-muted); }
+    .form-field input:focus {
+      border-color: var(--color-accent);
+      background: rgba(249,115,22,0.05);
+    }
+    .form-field.error input { border-color: rgba(248,113,113,0.7); }
+    .form-field .field-error {
+      font-size: 11px;
+      color: #f87171;
+      display: none;
+    }
+    .form-field.error .field-error { display: block; }
+
+    .form-submit-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: var(--border-radius-sm);
+      background: var(--color-accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+      box-shadow: 0 0 16px rgba(249,115,22,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .form-submit-btn:hover { background: var(--color-accent-light); box-shadow: 0 0 22px rgba(249,115,22,0.55); }
+    .form-privacy {
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--color-text-muted);
+      text-align: center;
+    }
+
+    /* Success state */
+    .form-success {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      height: 100%;
+      gap: 14px;
+      padding: 20px 0;
+    }
+    .form-success__icon {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: rgba(52,211,153,0.15);
+      border: 1px solid rgba(52,211,153,0.4);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .form-success__title { font-size: 16px; font-weight: 600; }
+    .form-success__body  { font-size: 13px; color: var(--color-text-secondary); line-height: 1.6; }
+
+    /* Right: value prop */
+    .lead-value-side {
+      padding: 32px 36px;
+      background: rgba(249,115,22,0.06);
+      border: 1px solid var(--glass-border);
+      border-radius: 0 var(--border-radius-lg) var(--border-radius-lg) 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .lead-value-side h2 {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.3px;
+      margin-bottom: 12px;
+    }
+    .lead-value-side h2 span { color: var(--color-accent-light); }
+
+    .lead-value-side .value-body {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+
+    .process-steps { display: flex; flex-direction: column; gap: 18px; }
+    .process-step  { display: flex; align-items: flex-start; gap: 14px; }
+    .step-num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--color-accent-subtle);
+      border: 1px solid var(--color-accent-border);
+      color: var(--color-accent-light);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-content__title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .step-content__desc  { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; }
+
+    /* ── Mobile ────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .hero-split { flex-direction: column; }
+      .hero-split__image { width: 100%; height: 40vh; position: relative; }
+      .hero-split__image img { position: absolute; }
+      .hero-split__image::after { background: linear-gradient(to bottom, transparent 55%, #162b3e 100%); }
+      .hero-split__content { padding: 32px 24px 48px; }
+      .hero-split__content h1 { font-size: 34px; letter-spacing: -0.5px; }
+    }
+    @media (max-width: 640px) {
+      .hero-stats { flex-direction: column; }
+      .role-grid  { grid-template-columns: 1fr; }
+      .calculator__body { grid-template-columns: 1fr; }
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════════
+       PAGE 1 — Split hero / role selector
+  ══════════════════════════════════════════════════ -->
+  <div id="page1" class="page active">
+    <div class="hero-split">
+
+      <!-- Left: image — A/B controlled -->
+      <div class="hero-split__image">
+        <!-- Variant A: Woman -->
+        <img class="v-img-a" src="../Visual_Assets/Woman_sitting_at_202604141320.jpeg" alt="Remote talent working" />
+        <!-- Variant B: Man -->
+        <img class="v-img-b" src="../Visual_Assets/Man_sitting_at_202604141313.jpeg" alt="Remote talent working" />
+      </div>
+
+      <!-- Right: content -->
+      <div class="hero-split__content">
+
+        <div class="brand-mark">
+          <span class="brand-mark__dot"></span>
+          <span class="brand-mark__name">Scale Army</span>
+        </div>
+
+        <!-- Test 1 — Variant A: savings-led -->
+        <h1 class="v-headline-a">Cut your hiring cost<br>by <span>60%</span></h1>
+        <!-- Test 1 — Variant B: talent-led -->
+        <h1 class="v-headline-b">Hire world-class<br><span>creative talent</span>, fully remote</h1>
+
+        <p class="hero-sub">Browse in-demand roles, explore what talent is available, and calculate exactly how much you save vs. a US hire.</p>
+
+        <div class="area-label">What area are you hiring for?</div>
+
+        <div class="area-pills">
+          <button class="area-pill active" data-area="all">All roles</button>
+          <button class="area-pill" data-area="sales">Sales &amp; BD</button>
+          <button class="area-pill" data-area="design">Design &amp; Creative</button>
+          <button class="area-pill" data-area="marketing">Marketing</button>
+          <button class="area-pill" data-area="social">Social Media</button>
+          <button class="area-pill" data-area="paid">Paid Media</button>
+          <button class="area-pill" data-area="ops">Operations</button>
+        </div>
+
+        <div class="hero-cta">
+          <button class="hero-cta__btn" id="explore-btn">
+            Explore roles
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8h10M9 4l4 4-4 4" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <span class="hero-cta__note">No commitment required</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       PAGE 2 — Dashboard results
+  ══════════════════════════════════════════════════ -->
+  <div id="page2" class="page">
+
+    <div class="back-bar">
+      <button class="back-btn" id="back-btn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M13 8H3M7 4L3 8l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Back
+      </button>
+    </div>
+
+    <div class="dashboard">
+
+      <header class="dashboard-header">
+        <h2>Roles &amp; ROI Explorer</h2>
+        <p>Browse in-demand remote roles and calculate your savings vs. a US hire.</p>
+      </header>
+
+      <!-- Hero stats -->
+      <section class="hero-stats" aria-label="Scale Army at a glance">
+        <div class="stat-card">
+          <span class="stat-card__label">Active placements</span>
+          <span class="stat-card__value">355</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label">Companies served</span>
+          <span class="stat-card__value">167</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label">Avg. savings vs. US hire</span>
+          <span class="stat-card__value stat-card__value--accent">~60%</span>
+        </div>
+      </section>
+
+      <!-- Filter pills -->
+      <div class="filter-row" id="filter-row" role="group" aria-label="Filter by category">
+        <button class="filter-pill" data-filter="all">All roles</button>
+        <button class="filter-pill" data-filter="sales">Sales &amp; BD</button>
+        <button class="filter-pill" data-filter="design">Design &amp; Creative</button>
+        <button class="filter-pill" data-filter="marketing">Marketing</button>
+        <button class="filter-pill" data-filter="social">Social Media</button>
+        <button class="filter-pill" data-filter="paid">Paid Media</button>
+        <button class="filter-pill" data-filter="ops">Operations</button>
+      </div>
+
+      <!-- Role cards -->
+      <section class="role-grid" aria-label="Role cards">
+
+        <div class="role-card glass" data-category="sales" data-role="Cold Caller" data-us="3500" data-sa="1400">
+          <span class="role-card__badge badge--sales">Sales &amp; BD</span>
+          <div class="role-card__name">Cold Caller</div>
+          <div class="role-card__stat v-stat-a"><strong>120</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Drives high-volume outbound prospecting through scripted calling campaigns — building your pipeline at a fraction of in-house cost.</div>
+        </div>
+
+        <div class="role-card glass" data-category="sales" data-role="SDR" data-us="4500" data-sa="1800">
+          <span class="role-card__badge badge--sales">Sales &amp; BD</span>
+          <div class="role-card__name">SDR</div>
+          <div class="role-card__stat v-stat-a"><strong>45</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Qualifies inbound and outbound leads and books discovery calls so your closers spend time selling, not chasing.</div>
+        </div>
+
+        <div class="role-card glass" data-category="sales" data-role="BDR" data-us="4500" data-sa="1800">
+          <span class="role-card__badge badge--sales">Sales &amp; BD</span>
+          <div class="role-card__name">BDR</div>
+          <div class="role-card__stat v-stat-a"><strong>21</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Identifies and engages new business opportunities through outbound prospecting — from cold outreach to first meetings.</div>
+        </div>
+
+        <div class="role-card glass" data-category="sales" data-role="Appointment Setter" data-us="3500" data-sa="1400">
+          <span class="role-card__badge badge--sales">Sales &amp; BD</span>
+          <div class="role-card__name">Appointment Setter</div>
+          <div class="role-card__stat v-stat-a"><strong>13</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Fills your sales calendar with qualified prospect meetings so your team focuses on closing, not scheduling.</div>
+        </div>
+
+        <div class="role-card glass" data-category="social" data-role="Social Media Manager" data-us="4500" data-sa="1800">
+          <span class="role-card__badge badge--social">Social Media</span>
+          <div class="role-card__name">Social Media Manager</div>
+          <div class="role-card__stat v-stat-a"><strong>56</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Owns your brand voice across platforms — creates, schedules, and optimizes content that builds audience and drives engagement.</div>
+        </div>
+
+        <div class="role-card glass" data-category="social" data-role="Social Media Specialist" data-us="4000" data-sa="1600">
+          <span class="role-card__badge badge--social">Social Media</span>
+          <div class="role-card__name">Social Media Specialist</div>
+          <div class="role-card__stat v-stat-a"><strong>12</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Executes day-to-day social content, community management, and platform-specific strategy.</div>
+        </div>
+
+        <div class="role-card glass" data-category="design" data-role="Graphic Designer" data-us="5000" data-sa="2000">
+          <span class="role-card__badge badge--design">Design &amp; Creative</span>
+          <div class="role-card__name">Graphic Designer</div>
+          <div class="role-card__stat v-stat-a"><strong>37</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Delivers production-ready visual assets for digital and print — from social content to brand collateral.</div>
+        </div>
+
+        <div class="role-card glass" data-category="design" data-role="Video Editor" data-us="5000" data-sa="2000">
+          <span class="role-card__badge badge--design">Design &amp; Creative</span>
+          <div class="role-card__name">Video Editor</div>
+          <div class="role-card__stat v-stat-a"><strong>24</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Transforms raw footage into polished, platform-ready content for ads, social, and branded video.</div>
+        </div>
+
+        <div class="role-card glass" data-category="marketing" data-role="Digital Marketing Specialist" data-us="5000" data-sa="2000">
+          <span class="role-card__badge badge--marketing">Marketing</span>
+          <div class="role-card__name">Digital Marketing Specialist</div>
+          <div class="role-card__stat v-stat-a"><strong>24</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Covers the full digital marketing mix — SEO, paid, email, and analytics — as a generalist campaign operator.</div>
+        </div>
+
+        <div class="role-card glass" data-category="marketing" data-role="Marketing Assistant" data-us="3500" data-sa="1400">
+          <span class="role-card__badge badge--marketing">Marketing</span>
+          <div class="role-card__name">Marketing Assistant</div>
+          <div class="role-card__stat v-stat-a"><strong>21</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Supports campaign execution, content scheduling, and reporting across your marketing channels.</div>
+        </div>
+
+        <div class="role-card glass" data-category="marketing" data-role="Marketing Manager" data-us="7000" data-sa="2800">
+          <span class="role-card__badge badge--marketing">Marketing</span>
+          <div class="role-card__name">Marketing Manager</div>
+          <div class="role-card__stat v-stat-a"><strong>19</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Leads campaign strategy, coordinates creative and channel teams, and owns marketing performance metrics.</div>
+        </div>
+
+        <div class="role-card glass" data-category="marketing" data-role="Growth Marketing Manager" data-us="7500" data-sa="3000">
+          <span class="role-card__badge badge--marketing">Marketing</span>
+          <div class="role-card__name">Growth Marketing Manager</div>
+          <div class="role-card__stat v-stat-a"><strong>15</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Runs data-driven growth experiments across acquisition and retention channels.</div>
+        </div>
+
+        <div class="role-card glass" data-category="marketing" data-role="Content Creator" data-us="4000" data-sa="1600">
+          <span class="role-card__badge badge--marketing">Marketing</span>
+          <div class="role-card__name">Content Creator</div>
+          <div class="role-card__stat v-stat-a"><strong>14</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Produces written, visual, and short-form video content aligned to your brand strategy and content calendar.</div>
+        </div>
+
+        <div class="role-card glass" data-category="paid" data-role="Paid Media Specialist" data-us="5500" data-sa="2200">
+          <span class="role-card__badge badge--paid">Paid Media</span>
+          <div class="role-card__name">Paid Media Specialist</div>
+          <div class="role-card__stat v-stat-a"><strong>22</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Manages paid campaigns across Meta, Google, and emerging platforms — focused on ROAS and cost-per-lead.</div>
+        </div>
+
+        <div class="role-card glass" data-category="paid" data-role="Paid Media Buyer" data-us="5500" data-sa="2200">
+          <span class="role-card__badge badge--paid">Paid Media</span>
+          <div class="role-card__name">Paid Media Buyer</div>
+          <div class="role-card__stat v-stat-a"><strong>21</strong> companies hiring this role</div>
+          <div class="role-card__stat v-stat-b">Currently placing candidates</div>
+          <div class="role-card__desc">Executes media buys, manages budgets, and optimizes targeting for performance-driven campaigns.</div>
+        </div>
+
+      </section>
+
+      <!-- Lead capture form -->
+      <section class="lead-section" aria-label="Get matched">
+
+        <!-- Left: form -->
+        <div class="lead-form-side">
+
+          <!-- Area context carried from page 1 -->
+          <div class="form-context">
+            <span class="form-context__label">You're looking for</span>
+            <span class="form-context__badge badge--all" id="form-area-badge">All roles</span>
+            <span class="form-context__label">talent</span>
+          </div>
+          <div class="form-role-row" id="form-role-row">
+            <span class="form-context__label">Role interest</span>
+            <span class="form-context__badge" id="form-role-badge"></span>
+            <button class="form-role-clear" id="form-role-clear" title="Clear">✕</button>
+          </div>
+
+          <!-- Form state -->
+          <div id="form-body">
+            <div class="form-title">Let's get you matched</div>
+            <div class="form-subtitle">Tell us who you are and we'll reach out within 1 business day.</div>
+
+            <form id="lead-form" novalidate>
+              <div class="form-fields">
+
+                <div class="form-field" id="field-name">
+                  <label for="input-name">Full name</label>
+                  <input type="text" id="input-name" placeholder="Jane Smith" autocomplete="name" />
+                  <span class="field-error">Please enter your name</span>
+                </div>
+
+                <div class="form-field" id="field-company">
+                  <label for="input-company">Company</label>
+                  <input type="text" id="input-company" placeholder="Acme Inc." autocomplete="organization" />
+                  <span class="field-error">Please enter your company</span>
+                </div>
+
+                <div class="form-field" id="field-email">
+                  <label for="input-email">Work email</label>
+                  <input type="email" id="input-email" placeholder="jane@acme.com" autocomplete="email" />
+                  <span class="field-error">Please enter a valid work email</span>
+                </div>
+
+              </div>
+
+              <button type="submit" class="form-submit-btn">
+                Get matched in 14 days
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 8h10M9 4l4 4-4 4" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </form>
+
+            <div class="form-privacy">No spam. We'll only use your info to follow up on this request.</div>
+          </div>
+
+          <!-- Success state (shown after submit) -->
+          <div class="form-success" id="form-success">
+            <div class="form-success__icon">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M4 10l4 4 8-8" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="form-success__title">You're on the list</div>
+            <div class="form-success__body">
+              We'll reach out within 1 business day with<br>
+              matched candidates for your role.
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right: value prop -->
+        <div class="lead-value-side">
+          <h2>Fully vetted talent,<br>ready to start in <span>14 days</span></h2>
+          <p class="value-body">
+            We handle sourcing, screening, and matching — so you spend your time
+            meeting candidates who are already qualified and ready to work.
+          </p>
+
+          <div class="process-steps">
+            <div class="process-step">
+              <div class="step-num">1</div>
+              <div class="step-content">
+                <div class="step-content__title">We source</div>
+                <div class="step-content__desc">We tap our active talent pool across 15+ countries to find candidates that fit your role and culture.</div>
+              </div>
+            </div>
+            <div class="process-step">
+              <div class="step-num">2</div>
+              <div class="step-content">
+                <div class="step-content__title">We vet</div>
+                <div class="step-content__desc">Every candidate goes through skills assessments, background checks, and a live interview before you see them.</div>
+              </div>
+            </div>
+            <div class="process-step">
+              <div class="step-num">3</div>
+              <div class="step-content">
+                <div class="step-content__title">You hire</div>
+                <div class="step-content__desc">Meet pre-screened, ready-to-start talent. Most clients make their first hire within 14 days of submitting this form.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+    </div>
+  </div>
+
+<script>
+  // ── Supabase config ─────────────────────────────────
+  // TODO: replace with your project values after Supabase setup
+  const SUPABASE_URL  = '';   // e.g. 'https://xxxx.supabase.co'
+  const SUPABASE_ANON = '';   // your anon/public key
+
+  let _db = null;
+  if (SUPABASE_URL && SUPABASE_ANON && window.supabase) {
+    _db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  }
+
+  // ── State ───────────────────────────────────────────
+  let selectedArea     = 'all';
+  let selectedRole     = null;
+  let selectedRoleCat  = null;
+
+  // ── A/B helpers ─────────────────────────────────────
+  function getAB()     { return JSON.parse(localStorage.getItem('sa_ab')     || '{}'); }
+  function getEvents() { return JSON.parse(localStorage.getItem('sa_events') || '[]'); }
+
+  function trackEvent(type, data) {
+    const ab     = getAB();
+    const events = getEvents();
+    events.push({ type, ts: Date.now(), headline: ab.headline, stat: ab.stat, ...data });
+    localStorage.setItem('sa_events', JSON.stringify(events));
+  }
+
+  // ── Page navigation ──────────────────────────────────
+  function showPage(id) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Category → badge class map (for role row)
+  const CAT_BADGE = {
+    sales:     'badge--sales',
+    design:    'badge--design',
+    marketing: 'badge--marketing',
+    social:    'badge--social',
+    paid:      'badge--paid',
+    ops:       'badge--ops',
+  };
+
+  function updateFormRole() {
+    const row   = document.getElementById('form-role-row');
+    const badge = document.getElementById('form-role-badge');
+    if (selectedRole) {
+      badge.textContent = selectedRole;
+      badge.className   = 'form-context__badge ' + (CAT_BADGE[selectedRoleCat] || 'badge--all');
+      row.classList.add('visible');
+    } else {
+      row.classList.remove('visible');
+    }
+  }
+
+  document.getElementById('form-role-clear').addEventListener('click', () => {
+    selectedRole    = null;
+    selectedRoleCat = null;
+    document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+    updateFormRole();
+  });
+
+  // Area label map for the form context badge
+  const AREA_LABELS = {
+    all:       { label: 'All roles',           cls: 'badge--all' },
+    sales:     { label: 'Sales & BD',          cls: 'badge--sales' },
+    design:    { label: 'Design & Creative',   cls: 'badge--design' },
+    marketing: { label: 'Marketing',           cls: 'badge--marketing' },
+    social:    { label: 'Social Media',        cls: 'badge--social' },
+    paid:      { label: 'Paid Media',          cls: 'badge--paid' },
+    ops:       { label: 'Operations',          cls: 'badge--ops' },
+  };
+
+  function updateFormContext(area) {
+    const map   = AREA_LABELS[area] || AREA_LABELS['all'];
+    const badge = document.getElementById('form-area-badge');
+    badge.textContent = map.label;
+    badge.className   = 'form-context__badge ' + map.cls;
+  }
+
+  // Page 1 → Page 2: carry selected area into filter pills + form context
+  document.getElementById('explore-btn').addEventListener('click', () => {
+    trackEvent('explore_click', { area: selectedArea });
+    applyFilter(selectedArea);
+    updateFormContext(selectedArea);
+    showPage('page2');
+  });
+
+  // Page 2 → Page 1
+  document.getElementById('back-btn').addEventListener('click', () => {
+    showPage('page1');
+  });
+
+  // ── Page 1: area pill selector (single-select) ───────
+  document.querySelectorAll('.area-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.area-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      selectedArea = pill.dataset.area;
+    });
+  });
+
+  // ── Page 2: filter pills ─────────────────────────────
+  function applyFilter(filter) {
+    // Update pill active state
+    document.querySelectorAll('.filter-pill').forEach(p => {
+      p.classList.toggle('active', p.dataset.filter === filter);
+    });
+    // Show / hide cards
+    document.querySelectorAll('.role-card').forEach(card => {
+      card.toggleAttribute('hidden', filter !== 'all' && card.dataset.category !== filter);
+    });
+  }
+
+  document.querySelectorAll('.filter-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      applyFilter(pill.dataset.filter);
+    });
+  });
+
+  // ── Role card → update form + scroll ────────────────
+  document.querySelectorAll('.role-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedRole    = card.dataset.role;
+      selectedRoleCat = card.dataset.category;
+      updateFormRole();
+      document.querySelector('.lead-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      trackEvent('card_to_form', { role: card.dataset.role, category: card.dataset.category });
+    });
+  });
+
+  // ── Lead form validation + submit ────────────────────
+  function validateEmail(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+
+  document.getElementById('lead-form').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    const nameEl    = document.getElementById('input-name');
+    const companyEl = document.getElementById('input-company');
+    const emailEl   = document.getElementById('input-email');
+
+    const nameVal    = nameEl.value.trim();
+    const companyVal = companyEl.value.trim();
+    const emailVal   = emailEl.value.trim();
+
+    document.getElementById('field-name').classList.toggle('error',    !nameVal);
+    document.getElementById('field-company').classList.toggle('error', !companyVal);
+    document.getElementById('field-email').classList.toggle('error',   !validateEmail(emailVal));
+
+    if (!nameVal || !companyVal || !validateEmail(emailVal)) return;
+
+    const ab = getAB();
+
+    // Structured lead object — matches Supabase leads table schema
+    const lead = {
+      name:        nameVal,
+      company:     companyVal,
+      email:       emailVal,
+      area:        selectedArea   || null,   // category from page 1
+      role:        selectedRole   || null,   // specific role clicked on page 2
+      ab_headline: ab.headline    || null,   // A/B variant for headline test
+      ab_stat:     ab.stat        || null,   // A/B variant for card stat test
+    };
+
+    // 1. Try Supabase insert
+    if (_db) {
+      const { error } = await _db.from('leads').insert(lead);
+      if (error) console.warn('[Supabase] insert error:', error.message);
+    }
+
+    // 2. Always keep localStorage copy as backup / dev fallback
+    const leads = JSON.parse(localStorage.getItem('sa_leads') || '[]');
+    leads.push({ ...lead, ts: Date.now() });
+    localStorage.setItem('sa_leads', JSON.stringify(leads));
+
+    trackEvent('form_submit', { area: selectedArea, role: selectedRole });
+
+    // Show success
+    document.getElementById('form-body').style.display    = 'none';
+    document.getElementById('form-success').style.display = 'flex';
+  });
+
+  // Clear field error on input
+  ['input-name','input-company','input-email'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      document.getElementById('field-' + id.replace('input-','')).classList.remove('error');
+    });
+  });
+
+  // ── Init ─────────────────────────────────────────────
+  applyFilter('all');
+</script>
+
+</body>
+</html>
